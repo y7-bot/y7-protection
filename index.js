@@ -6,14 +6,15 @@ const {
   ActionRowBuilder, 
   StringSelectMenuBuilder, 
   ChannelType,
-  Collection
+  Collection,
+  AuditLogEvent
 } = require('discord.js');
 const express = require('express');
 
 // --- 1. خادم Express مصغر لتشغيل البوت 24/7 على Render ---
 const app = express();
 const PORT = process.env.PORT || 3000;
-app.get('/', (req, res) => res.send('Y7 Protection Master Core is Active 24/7!'));
+app.get('/', (req, res) => res.send('Y7 Ultimate Protection Core is Active 24/7!'));
 app.listen(PORT, () => console.log(`[HTTP Server] Running smoothly on port ${PORT}`));
 
 // --- 2. إعداد البوت والصلاحيات الشاملة ---
@@ -31,15 +32,22 @@ const client = new Client({
   ],
 });
 
-// 🎨 الألوان والتصميم الفخم (أزرق ملكي وأسود)
+// 🎨 الألوان والتصميم الملكي الفخم (أزرق ملكي وأسود)
 const COLOR_BLUE = 0x0f52ba;   // Royal Blue
 const COLOR_BLACK = 0x111111;  // Deep Black
 const COLOR_CYAN = 0x1e90ff;   // Dodger Blue
-const EMBED_FOOTER = 'Y7 Protection • Security Master System';
+const EMBED_FOOTER = 'Y7 Protection • Ultimate Security System';
 const BOT_AVATAR = 'https://cdn.discordapp.com/embed/avatars/0.png';
 
 const guildInvites = new Collection();
 const spamTracker = new Map();
+
+// متتبعات حماية الإداريين الشاملة (Anti-Nuke Trackers)
+const adminChannelDeleteTracker = new Map();
+const adminChannelCreateTracker = new Map();
+const adminRoleDeleteTracker = new Map();
+const adminRoleCreateTracker = new Map();
+const adminBanTracker = new Map();
 
 function createRoyalEmbed(title, description, color = COLOR_BLUE, icon = '🛡️') {
   return new EmbedBuilder()
@@ -75,6 +83,31 @@ async function sendDedicatedLog(guild, channelName, embed) {
     await logChannel.send({ embeds: [embed] });
   } catch (err) {
     console.error(`[Log Error - ${channelName}]`, err);
+  }
+}
+
+// دالة حرمان وتجريد الإداري المخالف من كل الصلاحيات فوراً
+async function punishAdmin(guild, executorId, reason) {
+  try {
+    if (executorId === guild.ownerId) return; // استثناء مالك السيرفر الأصلي
+    const member = await guild.members.fetch(executorId).catch(() => null);
+    if (!member) return;
+
+    const rolesToRemove = member.roles.cache.filter(r => r.id !== guild.id && r.editable);
+    if (rolesToRemove.size > 0) {
+      await member.roles.remove(rolesToRemove, `[Admin Guard Violation] ${reason}`);
+    }
+
+    const warnEmbed = createRoyalEmbed(
+      '🚨 ADMIN GUARD VIOLATION DETECTED',
+      `> **تم تجريد الإداري المخالف من جميع رتباته!**\n\n👤 **الإداري:** <@${member.id}> (${member.user.tag})\n🆔 **المعرف:** \`${member.id}\`\n⚠️ **السبب:** ${reason}\n🛡️ **الإجراء:** سحب فوري لكافة الرتب والصلاحيات لمنع التخريب.`,
+      COLOR_BLACK,
+      '🚨'
+    );
+
+    await sendDedicatedLog(guild, '🛡️-security-logs', warnEmbed);
+  } catch (err) {
+    console.error('[Punish Admin Error]', err);
   }
 }
 
@@ -150,7 +183,7 @@ async function findTargetMember(message, queryArg) {
 }
 
 client.once('ready', async () => {
-  console.log(`[Y7 PROTECTION CORE] Logged in as ${client.user.tag}`);
+  console.log(`[Y7 PROTECTION ULTIMATE] Logged in as ${client.user.tag}`);
   client.guilds.cache.forEach(async (guild) => {
     await ensureMutedRole(guild);
     try {
@@ -160,23 +193,116 @@ client.once('ready', async () => {
   });
 });
 
-client.on('guildCreate', async (guild) => {
-  await ensureMutedRole(guild);
+// --- 🛑 حمايات الإداريين (Anti-Nuke Guards) ---
+
+// 1. مراقبة حذف القنوات
+client.on('channelDelete', async (channel) => {
+  if (!channel.guild) return;
   try {
-    const invites = await guild.invites.fetch();
-    guildInvites.set(guild.id, invites);
-  } catch (e) {}
+    const auditLogs = await channel.guild.fetchAuditLogs({ limit: 1, type: AuditLogEvent.ChannelDelete }).catch(() => null);
+    if (!auditLogs) return;
+    const entry = auditLogs.entries.first();
+    if (!entry || !entry.executor || entry.executor.bot) return;
+
+    const executorId = entry.executor.id;
+    const now = Date.now();
+    const userDeletes = adminChannelDeleteTracker.get(executorId) || [];
+    const recentDeletes = userDeletes.filter(ts => now - ts < 10000);
+    recentDeletes.push(now);
+    adminChannelDeleteTracker.set(executorId, recentDeletes);
+
+    if (recentDeletes.length > 2) {
+      await punishAdmin(channel.guild, executorId, 'حذف مكثف للقنوات (أكثر من قناتين في 10 ثوانٍ)');
+      adminChannelDeleteTracker.delete(executorId);
+    }
+  } catch (err) {}
 });
 
-client.on('inviteCreate', async (invite) => {
+// 2. مراقبة إنشاء القنوات الجماعي
+client.on('channelCreate', async (channel) => {
+  if (!channel.guild) return;
   try {
-    const invites = await invite.guild.invites.fetch();
-    guildInvites.set(invite.guild.id, invites);
-  } catch (e) {}
+    const auditLogs = await channel.guild.fetchAuditLogs({ limit: 1, type: AuditLogEvent.ChannelCreate }).catch(() => null);
+    if (!auditLogs) return;
+    const entry = auditLogs.entries.first();
+    if (!entry || !entry.executor || entry.executor.bot) return;
+
+    const executorId = entry.executor.id;
+    const now = Date.now();
+    const userCreates = adminChannelCreateTracker.get(executorId) || [];
+    const recentCreates = userCreates.filter(ts => now - ts < 10000);
+    recentCreates.push(now);
+    adminChannelCreateTracker.set(executorId, recentCreates);
+
+    if (recentCreates.length > 3) {
+      await punishAdmin(channel.guild, executorId, 'إنشاء عشوائي للقنوات (أكثر من 3 قنوات في 10 ثوانٍ)');
+      adminChannelCreateTracker.delete(executorId);
+    }
+  } catch (err) {}
 });
 
+// 3. مراقبة حذف الرتب
+client.on('roleDelete', async (role) => {
+  try {
+    const auditLogs = await role.guild.fetchAuditLogs({ limit: 1, type: AuditLogEvent.RoleDelete }).catch(() => null);
+    if (!auditLogs) return;
+    const entry = auditLogs.entries.first();
+    if (!entry || !entry.executor || entry.executor.bot) return;
+
+    const executorId = entry.executor.id;
+    const now = Date.now();
+    const userDeletes = adminRoleDeleteTracker.get(executorId) || [];
+    const recentDeletes = userDeletes.filter(ts => now - ts < 10000);
+    recentDeletes.push(now);
+    adminRoleDeleteTracker.set(executorId, recentDeletes);
+
+    if (recentDeletes.length > 2) {
+      await punishAdmin(role.guild, executorId, 'حذف جماعي للرتب (أكثر من رتبتين في 10 ثوانٍ)');
+      adminRoleDeleteTracker.delete(executorId);
+    }
+  } catch (err) {}
+});
+
+// 4. مراقبة الباند الجماعي
+client.on('guildBanAdd', async (ban) => {
+  const { guild } = ban;
+  try {
+    const auditLogs = await guild.fetchAuditLogs({ limit: 1, type: AuditLogEvent.MemberBanAdd }).catch(() => null);
+    if (!auditLogs) return;
+    const entry = auditLogs.entries.first();
+    if (!entry || !entry.executor || entry.executor.bot) return;
+
+    const executorId = entry.executor.id;
+    const now = Date.now();
+    const userBans = adminBanTracker.get(executorId) || [];
+    const recentBans = userBans.filter(ts => now - ts < 10000);
+    recentBans.push(now);
+    adminBanTracker.set(executorId, recentBans);
+
+    if (recentBans.length > 2) {
+      await punishAdmin(guild, executorId, 'حظر جماعي للأعضاء (أكثر من عضوين في 10 ثوانٍ)');
+      adminBanTracker.delete(executorId);
+    }
+  } catch (err) {}
+});
+
+// 5. حماية الويب هوك (Anti-Webhook)
+client.on('webhookUpdate', async (channel) => {
+  try {
+    const auditLogs = await channel.guild.fetchAuditLogs({ limit: 1, type: AuditLogEvent.WebhookCreate }).catch(() => null);
+    if (!auditLogs) return;
+    const entry = auditLogs.entries.first();
+    if (!entry || !entry.executor || entry.executor.bot) return;
+
+    await punishAdmin(channel.guild, entry.executor.id, 'حظر إنشاء الويب هوك التخريبية (Anti-Webhook Guard)');
+  } catch (err) {}
+});
+
+// --- الأحداث العامة ---
 client.on('guildMemberAdd', async (member) => {
   const { guild } = member;
+
+  // Anti-Bot Guard
   if (member.user.bot) {
     try {
       await member.ban({ reason: '[Y7 Protection] دخول بوتات غير مصرح بها' });
@@ -215,13 +341,13 @@ client.on('messageDelete', async (message) => {
   await sendDedicatedLog(message.guild, '💬-message-logs', embed);
 });
 
-// --- الأوامر والحماية والسبام ---
+// --- الأوامر والحماية المباشرة ---
 client.on('messageCreate', async (message) => {
   if (message.author.bot || !message.guild) return;
 
   const { guild, channel, author, member, content } = message;
 
-  // 1️⃣ حماية الروابط (Anti-Link)
+  // 1️⃣ Anti-Link
   const linkRegex = /(https?:\/\/[^\s]+)/g;
   if (linkRegex.test(content) && !member.permissions.has(PermissionFlagsBits.Administrator)) {
     await message.delete().catch(() => {});
@@ -230,7 +356,7 @@ client.on('messageCreate', async (message) => {
     return;
   }
 
-  // 2️⃣ نظام Anti-Spam (3 رسائل أو أكثر خلال ثانيتين -> تايم أوت 5 دقائق)
+  // 2️⃣ Anti-Spam (3 رسائل بـ ثانيتين = تايم أوت 5 دقائق)
   if (!member.permissions.has(PermissionFlagsBits.Administrator)) {
     const now = Date.now();
     const userTimestamps = spamTracker.get(author.id) || [];
