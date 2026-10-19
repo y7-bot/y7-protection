@@ -37,7 +37,6 @@ const COLOR_CYAN = 0x1e90ff;   // Dodger Blue
 const EMBED_FOOTER = 'Y7 Protection • Security Master System';
 const BOT_AVATAR = 'https://cdn.discordapp.com/embed/avatars/0.png';
 
-// خريطة لتتبع التكرار والأنشطة والدعوات
 const spamTracker = new Map();
 const actionTracker = new Map();
 const raidTracker = new Map();
@@ -56,7 +55,6 @@ function isRateLimited(userId, actionType) {
   return recentActions.length > MAX_DELETIONS;
 }
 
-// 💡 دالة تصميم الرسائل الفخمة
 function createRoyalEmbed(title, description, color = COLOR_BLUE, icon = '🛡️') {
   return new EmbedBuilder()
     .setAuthor({ name: `Y7 PROTECTION SYSTEM | ${icon}`, iconURL: client.user?.displayAvatarURL() || BOT_AVATAR })
@@ -67,7 +65,6 @@ function createRoyalEmbed(title, description, color = COLOR_BLUE, icon = '🛡�
     .setTimestamp();
 }
 
-// 💡 نظام اللوقات المنفصلة تلقائياً لكل حدث
 async function sendDedicatedLog(guild, channelName, embed) {
   try {
     let category = guild.channels.cache.find(c => c.name === '🛡️-y7-logs' && c.type === ChannelType.GuildCategory);
@@ -95,7 +92,6 @@ async function sendDedicatedLog(guild, channelName, embed) {
   }
 }
 
-// 💡 نظام الترحيب المخصص
 async function sendWelcomeMessage(member, inviter) {
   try {
     const { guild } = member;
@@ -175,10 +171,24 @@ function parseDuration(str) {
   return 10 * 60 * 1000;
 }
 
-// --- جاهزية البوت وتتبع روابط الدعوات ---
+// دالة ذكية للبحث عن العضو (بالمنشن أو الـ ID أو النص)
+async function findTargetMember(message, args) {
+  // 1. البحث بالمنشن
+  let target = message.mentions.members.first();
+  if (target) return target;
+
+  // 2. البحث بالـ ID المباشر
+  if (args[1] && /^\d+$/.test(args[1])) {
+    try {
+      target = await message.guild.members.fetch(args[1]);
+      if (target) return target;
+    } catch (e) {}
+  }
+  return null;
+}
+
 client.once('ready', async () => {
   console.log(`[Y7 PROTECTION CORE] Logged in as ${client.user.tag}`);
-  
   client.guilds.cache.forEach(async (guild) => {
     await ensureMutedRole(guild);
     try {
@@ -203,39 +213,18 @@ client.on('inviteCreate', async (invite) => {
   } catch (e) {}
 });
 
-// --- Anti-Bot & Anti-Raid & Welcome & Join/Leave Logs ---
+// الأحداث والأنظمة التلقائية
 client.on('guildMemberAdd', async (member) => {
   const { guild } = member;
-
-  // 1. Anti-Bot Guard -> روم لوق خاص: 🤖-bot-logs
   if (member.user.bot) {
     try {
       await member.ban({ reason: '[Y7 Protection] دخول بوتات غير مصرح بها' });
-      const embed = createRoyalEmbed('🛡️ Anti-Bot Guard', `> **تم حظر البوت:** ${member.user.tag}\n> **المعرف:** \`${member.id}\`\n\n\`نظام الحماية الذكي يمنع دخول البوتات التخريبية.\``, COLOR_BLACK, '🤖');
+      const embed = createRoyalEmbed('🛡️ Anti-Bot Guard', `> **تم حظر البوت:** ${member.user.tag}\n> **المعرف:** \`${member.id}\``, COLOR_BLACK, '🤖');
       await sendDedicatedLog(guild, '🤖-bot-logs', embed);
-      await notifyOwner(guild, 'حظر بوت غير مصرح به', `تم حظر البوت **${member.user.tag}** فور دخوله للسيرفر.`);
       return;
     } catch (e) {}
   }
 
-  // 2. Anti-Raid Guard -> روم لوق خاص: ⚡-raid-logs
-  const now = Date.now();
-  const joins = raidTracker.get(guild.id) || [];
-  const recentJoins = joins.filter(t => now - t < 5000);
-  recentJoins.push(now);
-  raidTracker.set(guild.id, recentJoins);
-
-  if (recentJoins.length > 5) {
-    try {
-      await member.kick('[Y7 Anti-Raid] اشتباه هجوم دخول مكثف');
-      const raidEmbed = createRoyalEmbed('🚨 Anti-Raid Defense Active', `> **تم طرد:** ${member.user.tag}\n> **السبب:** اشتباه هجوم دخول مكثف (Raid Attack).\n\n\`تم تفعيل وضع الدفاع السريع.\``, COLOR_BLACK, '⚡');
-      await sendDedicatedLog(guild, '⚡-raid-logs', raidEmbed);
-      await notifyOwner(guild, 'هجوم دخول مكثف (Anti-Raid)', `يتعرض سيرفرك لهجوم دخول أعضاء بشكل مكثف حالياً!`);
-      return;
-    } catch (e) {}
-  }
-
-  // 3. تحديد الداعي وروم الترحيب
   let inviter = null;
   try {
     const newInvites = await guild.invites.fetch();
@@ -249,19 +238,16 @@ client.on('guildMemberAdd', async (member) => {
 
   await sendWelcomeMessage(member, inviter);
 
-  // 4. سجل انضمام الأعضاء -> روم لوق خاص: 🚪-join-leave-logs
   const inviterLog = inviter ? `<@${inviter.id}>` : 'غير معروف';
   const joinEmbed = createRoyalEmbed('📥 انضمام عضو جديد', `> **العضو:** ${member.user.tag} (<@${member.id}>)\n> **دعوة بواسطة:** ${inviterLog}\n> **الحساب:** <t:${Math.floor(member.user.createdTimestamp / 1000)}:R>`, COLOR_CYAN, '👑');
   await sendDedicatedLog(guild, '🚪-join-leave-logs', joinEmbed);
 });
 
 client.on('guildMemberRemove', async (member) => {
-  // سجل مغادرة الأعضاء -> روم لوق خاص: 🚪-join-leave-logs
   const leaveEmbed = createRoyalEmbed('📤 مغادرة عضو', `> **العضو:** ${member.user.tag} (<@${member.id}>)`, COLOR_BLACK, '🚪');
   await sendDedicatedLog(member.guild, '🚪-join-leave-logs', leaveEmbed);
 });
 
-// --- Channel Guard & Anti-Nuke -> روم لوق خاص: 🛡️-security-logs ---
 client.on('channelDelete', async (channel) => {
   const guild = channel.guild;
   try {
@@ -271,16 +257,13 @@ client.on('channelDelete', async (channel) => {
       if (isRateLimited(entry.executor.id, 'channel_delete')) {
         const executor = await guild.members.fetch(entry.executor.id);
         await executor.ban({ reason: '[Y7 Anti-Nuke] تخطي حد حذف القنوات' });
-        
-        const embed = createRoyalEmbed('💥 Anti-Nuke Protection Triggered', `> **المخرب:** ${entry.executor.tag}\n> **القناة المحذوفة:** ${channel.name}\n\n\`تم حظر الإداري فوراً وسحب الصلاحيات لحماية السيرفر.\``, COLOR_BLACK, '💀');
+        const embed = createRoyalEmbed('💥 Anti-Nuke Protection', `> **المخرب:** ${entry.executor.tag}\n> **القناة:** ${channel.name}`, COLOR_BLACK, '💀');
         await sendDedicatedLog(guild, '🛡️-security-logs', embed);
-        await notifyOwner(guild, 'محاولة تخريب (Anti-Nuke)', `قام العضو **${entry.executor.tag}** بحذف القنوات وتم حظره فوراً!`);
       }
     }
   } catch (e) {}
 });
 
-// --- Role Guard & Anti-Nuke -> روم لوق خاص: 🛡️-security-logs ---
 client.on('roleDelete', async (role) => {
   const guild = role.guild;
   try {
@@ -290,218 +273,127 @@ client.on('roleDelete', async (role) => {
       if (isRateLimited(entry.executor.id, 'role_delete')) {
         const executor = await guild.members.fetch(entry.executor.id);
         await executor.ban({ reason: '[Y7 Anti-Nuke] تخطي حد حذف الرتب' });
-        
-        const embed = createRoyalEmbed('💥 Role Guard Anti-Nuke', `> **المخرب:** ${entry.executor.tag}\n> **الرتبة المحذوفة:** ${role.name}\n\n\`تم حظر الإداري بنجاح وإيقاف عملية التخريب.\``, COLOR_BLACK, '💀');
-        await sendDedicatedLog(guild, '🛡️-security-logs', embed);
-        await notifyOwner(guild, 'محاولة مسح رتب', `قام الإداري **${entry.executor.tag}** بمحاولة تخريب الرتب وتم حظره.`);
-      }
-    }
-  } catch (e) {}
-});
-
-// --- Webhook Guard -> روم لوق خاص: 🛡️-security-logs ---
-client.on('webhookUpdate', async (channel) => {
-  const guild = channel.guild;
-  try {
-    const logs = await guild.fetchAuditLogs({ limit: 1, type: AuditLogEvent.WebhookCreate });
-    const entry = logs.entries.first();
-    if (entry && entry.executor && !entry.executor.bot) {
-      const executor = await guild.members.fetch(entry.executor.id);
-      if (!executor.permissions.has(PermissionFlagsBits.Administrator)) {
-        await executor.kick('[Y7 Webhook Guard] إنشاء ويب هوك غير مصرح');
-        const embed = createRoyalEmbed('🌐 Webhook Guard Action', `> **المخالف:** ${entry.executor.tag}\n> **القناة:** <#${channel.id}>\n\n\`تم طرد المستخدم لمنع اختراق الويب هوك.\``, COLOR_BLACK, '🛑');
+        const embed = createRoyalEmbed('💥 Role Guard Anti-Nuke', `> **المخرب:** ${entry.executor.tag}\n> **الرتبة:** ${role.name}`, COLOR_BLACK, '💀');
         await sendDedicatedLog(guild, '🛡️-security-logs', embed);
       }
     }
   } catch (e) {}
 });
 
-// --- Ban Guard Logs -> روم لوق خاص: 🔨-mod-logs ---
-client.on('guildBanAdd', async (ban) => {
-  try {
-    const logs = await ban.guild.fetchAuditLogs({ limit: 1, type: AuditLogEvent.MemberBanAdd });
-    const entry = logs.entries.first();
-    const executor = entry ? entry.executor.tag : 'غير معروف';
-    
-    const embed = createRoyalEmbed('🔨 Ban Guard Log', `> **المحظور:** ${ban.user.tag}\n> **بواسطة:** ${executor}\n> **السبب:** ${ban.reason || 'غير محدد'}`, COLOR_BLACK, '🔨');
-    await sendDedicatedLog(ban.guild, '🔨-mod-logs', embed);
-  } catch (e) {}
-});
-
-client.on('guildBanRemove', async (ban) => {
-  try {
-    const logs = await ban.guild.fetchAuditLogs({ limit: 1, type: AuditLogEvent.MemberBanRemove });
-    const entry = logs.entries.first();
-    const executor = entry ? entry.executor.tag : 'غير معروف';
-    
-    const embed = createRoyalEmbed('🔓 Unban Guard Log', `> **العضو:** ${ban.user.tag}\n> **تم بواسطة:** ${executor}`, COLOR_CYAN, '🔓');
-    await sendDedicatedLog(ban.guild, '🔨-mod-logs', embed);
-  } catch (e) {}
-});
-
-// --- Message Logs -> روم لوق خاص: 💬-message-logs ---
 client.on('messageDelete', async (message) => {
   if (!message.guild || message.author?.bot) return;
-  const embed = createRoyalEmbed('🗑️ Message Deleted', `> **الكاتب:** ${message.author.tag} (<@${message.author.id}>)\n> **القناة:** <#${message.channel.id}>\n\n\`\`\`${message.content || 'محتوى ميديا/غير نصي'}\`\`\``, COLOR_BLACK, '🗑️');
+  const embed = createRoyalEmbed('🗑️ Message Deleted', `> **الكاتب:** ${message.author.tag} (<@${message.author.id}>)\n> **القناة:** <#${message.channel.id}>\n\n\`\`\`${message.content || 'محتوى ميديا'}\`\`\``, COLOR_BLACK, '🗑️');
   await sendDedicatedLog(message.guild, '💬-message-logs', embed);
 });
 
-client.on('messageUpdate', async (oldMessage, newMessage) => {
-  if (!oldMessage.guild || oldMessage.author?.bot || oldMessage.content === newMessage.content) return;
-  const embed = createRoyalEmbed('✏️ Message Edited', `> **الكاتب:** ${oldMessage.author.tag}\n> **القناة:** <#${oldMessage.channel.id}>\n\n**قبل:** ${oldMessage.content}\n**بعد:** ${newMessage.content}`, COLOR_BLUE, '✏️');
-  await sendDedicatedLog(oldMessage.guild, '💬-message-logs', embed);
-});
-
-// --- الأوامر المباشرة ---
+// --- الأوامر المباشرة المحسنة ---
 client.on('messageCreate', async (message) => {
   if (message.author.bot || !message.guild) return;
 
   const { guild, channel, author, member, content } = message;
 
-  // Anti-Link -> 🛡️-security-logs
+  // Anti-Link
   const linkRegex = /(https?:\/\/[^\s]+)/g;
   if (linkRegex.test(content) && !member.permissions.has(PermissionFlagsBits.Administrator)) {
     await message.delete().catch(() => {});
-    const warning = await channel.send({ embeds: [createRoyalEmbed('⚠️ تنبيه أمني', `<@${author.id}> يمنع إرسال الروابط والتصيد في هذا السيرفر!`, COLOR_BLACK, '🛑')] });
+    const warning = await channel.send({ embeds: [createRoyalEmbed('⚠️ تنبيه أمني', `<@${author.id}> يمنع إرسال الروابط والتصيد!`, COLOR_BLACK, '🛑')] });
     setTimeout(() => warning.delete().catch(() => {}), 5000);
-
-    const embed = createRoyalEmbed('🔗 Anti-Link Violation', `> **العضو:** ${author.tag}\n> **القناة:** <#${channel.id}>\n> **المحتوى:** \`${content}\``, COLOR_BLUE, '🔗');
-    await sendDedicatedLog(guild, '🛡️-security-logs', embed);
     return;
   }
 
-  // Anti-Mass Mention -> 🛡️-security-logs
-  if (message.mentions.users.size > 4 && !member.permissions.has(PermissionFlagsBits.Administrator)) {
-    await message.delete().catch(() => {});
-    await member.timeout(15 * 60 * 1000, 'Anti-Mass Mention Violation');
-    const embed = createRoyalEmbed('📢 Anti-Mass Mention', `> **العضو:** ${author.tag}\n> **الإجراء:** تم إعطاء تايم أوت 15 دقيقة لمسح المنشن الجماعي.`, COLOR_BLACK, '🚫');
-    await sendDedicatedLog(guild, '🛡️-security-logs', embed);
-    return;
-  }
-
-  // Anti-Spam -> 🛡️-security-logs
-  const now = Date.now();
-  const userSpam = spamTracker.get(author.id) || [];
-  const recentSpam = userSpam.filter(t => now - t < 3000);
-  recentSpam.push(now);
-  spamTracker.set(author.id, recentSpam);
-
-  if (recentSpam.length > 4 && !member.permissions.has(PermissionFlagsBits.Administrator)) {
-    await message.delete().catch(() => {});
-    await member.timeout(5 * 60 * 1000, 'Anti-Spam Protection');
-    const spamEmbed = createRoyalEmbed('⚡ Anti-Spam Auto Mod', `> **المستخدم:** ${author.tag}\n> **الإجراء:** تم إسكام المستخدم 5 دقائق بسبب السبام والإغراق.`, COLOR_BLUE, '⚡');
-    await sendDedicatedLog(guild, '🛡️-security-logs', spamEmbed);
-    return;
-  }
-
-  // ==========================================
-  // ⚡ الأوامر المباشرة (اص / تكلم / باند / فك الباند / تايم / فك التايم)
-  // ==========================================
   const args = content.trim().split(/ +/);
   const command = args[0]?.toLowerCase();
 
-  // 🔴 اص @العضو أو بالـ ID
+  // 1️⃣ أمر: اص @العضو أو الـ ID
   if (command === 'اص') {
     if (!member.permissions.has(PermissionFlagsBits.MuteMembers)) return;
-    const target = message.mentions.members.first() || await guild.members.fetch(args[1]).catch(() => null);
-    if (!target) return message.reply({ embeds: [createRoyalEmbed('❌ خطأ في الأمر', 'يرجى تحديد العضو بالمنشن أو الـ ID! مثال: `اص @user`', COLOR_BLACK, '⚠️')] });
+    const target = await findTargetMember(message, args);
+    if (!target) return message.reply({ embeds: [createRoyalEmbed('❌ خطأ', 'يرجى تحديد العضو بالمنشن أو الـ ID! مثال: `اص @user`', COLOR_BLACK, '⚠️')] });
 
     const mutedRole = await ensureMutedRole(guild);
     try {
       await target.roles.add(mutedRole);
-      await target.timeout(10 * 60 * 1000, `أمر اص بواسطة ${author.tag}`);
-      
-      await message.reply({ embeds: [createRoyalEmbed('🔇 Mute Executed', `> **تم إسكام العضو:** ${target.user.tag}\n> **الرتبة المضافة:** \`Muted\`\n> **المدة:** \`10 دقائق\`\n> **بواسطة:** ${author.tag}`, COLOR_BLUE, '🔇')] });
-      
-      const logEmbed = createRoyalEmbed('🔇 Mute Executed', `> **العضو:** ${target.user.tag}\n> **بواسطة:** ${author.tag}\n> **المدة:** 10 دقائق`, COLOR_BLUE, '🔇');
-      await sendDedicatedLog(guild, '🔨-mod-logs', logEmbed);
+      await target.timeout(10 * 60 * 1000, `بواسطة ${author.tag}`);
+      await message.reply({ embeds: [createRoyalEmbed('🔇 Mute Executed', `> **تم إسكام:** ${target.user.tag}\n> **بواسطة:** ${author.tag}`, COLOR_BLUE, '🔇')] });
+      await sendDedicatedLog(guild, '🔨-mod-logs', createRoyalEmbed('🔇 Mute Log', `> **العضو:** ${target.user.tag}\n> **بواسطة:** ${author.tag}`, COLOR_BLUE, '🔇'));
     } catch (e) {
-      message.reply({ embeds: [createRoyalEmbed('❌ تعذر التنفيذ', 'تأكد أن رتبة البوت أعلى من رتبة العضو المطلوب.', COLOR_BLACK, '⚠️')] });
+      message.reply({ embeds: [createRoyalEmbed('❌ تعذر التنفيذ', 'تأكد أن رتبة البوت أعلى من رتبة العضو.', COLOR_BLACK, '⚠️')] });
     }
   }
 
-  // 🔴 تكلم @العضو أو بالـ ID
+  // 2️⃣ أمر: تكلم @العضو أو الـ ID
   if (command === 'تكلم') {
     if (!member.permissions.has(PermissionFlagsBits.MuteMembers)) return;
-    const target = message.mentions.members.first() || await guild.members.fetch(args[1]).catch(() => null);
-    if (!target) return message.reply({ embeds: [createRoyalEmbed('❌ خطأ في الأمر', 'يرجى تحديد العضو بالمنشن أو الـ ID! مثال: `تكلم @user`', COLOR_BLACK, '⚠️')] });
+    const target = await findTargetMember(message, args);
+    if (!target) return message.reply({ embeds: [createRoyalEmbed('❌ خطأ', 'يرجى تحديد العضو بالمنشن أو الـ ID!', COLOR_BLACK, '⚠️')] });
 
     const mutedRole = await ensureMutedRole(guild);
     try {
       await target.roles.remove(mutedRole);
       await target.timeout(null);
-      
-      await message.reply({ embeds: [createRoyalEmbed('🔊 Unmute Executed', `> **تم فك الإسكام عن:** ${target.user.tag}\n> **الرتبة المزالة:** \`Muted\`\n> **بواسطة:** ${author.tag}`, COLOR_CYAN, '🔊')] });
-      
-      const logEmbed = createRoyalEmbed('🔊 Unmute Executed', `> **العضو:** ${target.user.tag}\n> **بواسطة:** ${author.tag}`, COLOR_CYAN, '🔊');
-      await sendDedicatedLog(guild, '🔨-mod-logs', logEmbed);
+      await message.reply({ embeds: [createRoyalEmbed('🔊 Unmute Executed', `> **تم فك الإسكام عن:** ${target.user.tag}\n> **بواسطة:** ${author.tag}`, COLOR_CYAN, '🔊')] });
+      await sendDedicatedLog(guild, '🔨-mod-logs', createRoyalEmbed('🔊 Unmute Log', `> **العضو:** ${target.user.tag}\n> **بواسطة:** ${author.tag}`, COLOR_CYAN, '🔊'));
     } catch (e) {
-      message.reply({ embeds: [createRoyalEmbed('❌ تعذر التنفيذ', 'تعذر فك الإسكام عن العضو.', COLOR_BLACK, '⚠️')] });
+      message.reply({ embeds: [createRoyalEmbed('❌ تعذر التنفيذ', 'تعذر فك الإسكام.', COLOR_BLACK, '⚠️')] });
     }
   }
 
-  // 🔴 باند @العضو أو بالـ ID
+  // 3️⃣ أمر: باند @العضو أو الـ ID
   if (command === 'باند') {
     if (!member.permissions.has(PermissionFlagsBits.BanMembers)) return;
-    const target = message.mentions.members.first() || await guild.members.fetch(args[1]).catch(() => null);
-    if (!target) return message.reply({ embeds: [createRoyalEmbed('❌ خطأ في الأمر', 'يرجى تحديد العضو بالمنشن أو الـ ID! مثال: `باند @user`', COLOR_BLACK, '⚠️')] });
+    const target = await findTargetMember(message, args);
+    if (!target) return message.reply({ embeds: [createRoyalEmbed('❌ خطأ', 'يرجى تحديد العضو بالمنشن أو الـ ID! مثال: `باند @user`', COLOR_BLACK, '⚠️')] });
 
-    const reason = args.slice(2).join(' ') || 'بدون سبب مدون';
+    const reason = args.slice(2).join(' ') || 'بدون سبب';
     try {
       await target.ban({ reason: `${reason} | بواسطة ${author.tag}` });
-      await message.reply({ embeds: [createRoyalEmbed('🔨 Ban Executed', `> **تم حظر العضو:** ${target.user.tag}\n> **السبب:** \`${reason}\`\n> **بواسطة:** ${author.tag}`, COLOR_BLACK, '🔨')] });
+      await message.reply({ embeds: [createRoyalEmbed('🔨 Ban Executed', `> **تم حظر:** ${target.user.tag}\n> **السبب:** ${reason}\n> **بواسطة:** ${author.tag}`, COLOR_BLACK, '🔨')] });
     } catch (e) {
-      message.reply({ embeds: [createRoyalEmbed('❌ تعذر التنفيذ', 'تأكد أن رتبة العضو أقل من رتبة البوت.', COLOR_BLACK, '⚠️')] });
+      message.reply({ embeds: [createRoyalEmbed('❌ تعذر التنفيذ', 'رتبة العضو أعلى من رتبة البوت.', COLOR_BLACK, '⚠️')] });
     }
   }
 
-  // 🔴 فك الباند USER_ID
+  // 4️⃣ أمر: فك الباند USER_ID
   if (command === 'فك' && args[1] === 'الباند') {
     if (!member.permissions.has(PermissionFlagsBits.BanMembers)) return;
     const userId = args[2];
-    if (!userId || isNaN(userId)) return message.reply({ embeds: [createRoyalEmbed('❌ خطأ في الأمر', 'يرجى كتابة الـ ID! مثال: `فك الباند 123456789`', COLOR_BLACK, '⚠️')] });
+    if (!userId || !/^\d+$/.test(userId)) return message.reply({ embeds: [createRoyalEmbed('❌ خطأ', 'يرجى كتابة الـ ID الصحيح! مثال: `فك الباند 123456789`', COLOR_BLACK, '⚠️')] });
 
     try {
       await guild.members.unban(userId);
-      await message.reply({ embeds: [createRoyalEmbed('🔓 Unban Executed', `> **تم فك الحظر عن الحساب:** \`${userId}\`\n> **بواسطة:** ${author.tag}`, COLOR_CYAN, '🔓')] });
+      await message.reply({ embeds: [createRoyalEmbed('🔓 Unban Executed', `> **تم فك الحظر عن:** \`${userId}\`\n> **بواسطة:** ${author.tag}`, COLOR_CYAN, '🔓')] });
     } catch (e) {
-      message.reply({ embeds: [createRoyalEmbed('❌ تعذر التنفيذ', 'لم يتم العثور على حظر لهذا الـ ID.', COLOR_BLACK, '⚠️')] });
+      message.reply({ embeds: [createRoyalEmbed('❌ تعذر التنفيذ', 'هذا الـ ID غير محظور أو غير صحيح.', COLOR_BLACK, '⚠️')] });
     }
   }
 
-  // 🔴 تايم @العضو أو بالـ ID
+  // 5️⃣ أمر: تايم @العضو 10m أو بالـ ID
   if (command === 'تايم') {
     if (!member.permissions.has(PermissionFlagsBits.ModerateMembers)) return;
-    const target = message.mentions.members.first() || await guild.members.fetch(args[1]).catch(() => null);
+    const target = await findTargetMember(message, args);
     const timeArg = args[2] || '10m';
-    if (!target) return message.reply({ embeds: [createRoyalEmbed('❌ خطأ في الأمر', 'يرجى تحديد العضو بالمنشن أو الـ ID! مثال: `تايم @user 10m`', COLOR_BLACK, '⚠️')] });
+    if (!target) return message.reply({ embeds: [createRoyalEmbed('❌ خطأ', 'يرجى تحديد العضو والوقت! مثال: `تايم @user 10m`', COLOR_BLACK, '⚠️')] });
 
     const duration = parseDuration(timeArg);
     try {
-      await target.timeout(duration, `أمر تايم بواسطة ${author.tag}`);
-      await message.reply({ embeds: [createRoyalEmbed('⏱️ Timeout Applied', `> **العضو:** ${target.user.tag}\n> **المدة:** \`${timeArg}\`\n> **بواسطة:** ${author.tag}`, COLOR_BLUE, '⏱️')] });
-      
-      const logEmbed = createRoyalEmbed('⏱️ Timeout Applied', `> **العضو:** ${target.user.tag}\n> **المدة:** \`${timeArg}\`\n> **بواسطة:** ${author.tag}`, COLOR_BLUE, '⏱️');
-      await sendDedicatedLog(guild, '🔨-mod-logs', logEmbed);
+      await target.timeout(duration, `بواسطة ${author.tag}`);
+      await message.reply({ embeds: [createRoyalEmbed('⏱️ Timeout Applied', `> **العضو:** ${target.user.tag}\n> **المدة:** ${timeArg}\n> **بواسطة:** ${author.tag}`, COLOR_BLUE, '⏱️')] });
     } catch (e) {
-      message.reply({ embeds: [createRoyalEmbed('❌ تعذر التنفيذ', 'تعذر إعطاء تايم أوت للعضو.', COLOR_BLACK, '⚠️')] });
+      message.reply({ embeds: [createRoyalEmbed('❌ تعذر التنفيذ', 'تعذر إعطاء تايم أوت.', COLOR_BLACK, '⚠️')] });
     }
   }
 
-  // 🔴 فك التايم @العضو أو بالـ ID
+  // 6️⃣ أمر: فك التايم @العضو أو بالـ ID
   if (command === 'فك' && args[1] === 'التايم') {
     if (!member.permissions.has(PermissionFlagsBits.ModerateMembers)) return;
-    const target = message.mentions.members.first() || await guild.members.fetch(args[2]).catch(() => null);
-    if (!target) return message.reply({ embeds: [createRoyalEmbed('❌ خطأ في الأمر', 'يرجى تحديد العضو بالمنشن أو الـ ID! مثال: `فك التايم @user`', COLOR_BLACK, '⚠️')] });
+    const target = await findTargetMember(message, args);
+    if (!target) return message.reply({ embeds: [createRoyalEmbed('❌ خطأ', 'يرجى تحديد العضو! مثال: `فك التايم @user`', COLOR_BLACK, '⚠️')] });
 
     try {
       await target.timeout(null);
       await message.reply({ embeds: [createRoyalEmbed('⏳ Timeout Removed', `> **تم فك التايم عن:** ${target.user.tag}\n> **بواسطة:** ${author.tag}`, COLOR_CYAN, '⏳')] });
-      
-      const logEmbed = createRoyalEmbed('⏳ Timeout Removed', `> **العضو:** ${target.user.tag}\n> **بواسطة:** ${author.tag}`, COLOR_CYAN, '⏳');
-      await sendDedicatedLog(guild, '🔨-mod-logs', logEmbed);
     } catch (e) {
-      message.reply({ embeds: [createRoyalEmbed('❌ تعذر التنفيذ', 'تعذر فك التايم أوت.', COLOR_BLACK, '⚠️')] });
+      message.reply({ embeds: [createRoyalEmbed('❌ تعذر التنفيذ', 'تعذر فك التايم.', COLOR_BLACK, '⚠️')] });
     }
   }
 });
