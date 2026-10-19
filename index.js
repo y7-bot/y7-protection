@@ -39,7 +39,7 @@ const EMBED_FOOTER = 'Y7 Protection • Security Master System';
 const BOT_AVATAR = 'https://cdn.discordapp.com/embed/avatars/0.png';
 
 const guildInvites = new Collection();
-const spamTracker = new Map(); // خريطة مخصصة لتتبع السبام بدقة
+const spamTracker = new Map();
 
 function createRoyalEmbed(title, description, color = COLOR_BLUE, icon = '🛡️') {
   return new EmbedBuilder()
@@ -98,7 +98,13 @@ async function sendWelcomeMessage(member, inviter) {
     const welcomeEmbed = new EmbedBuilder()
       .setAuthor({ name: `Y7 PROTECTION SYSTEM | 👑`, iconURL: client.user?.displayAvatarURL() || BOT_AVATAR })
       .setTitle(`👋 أهلاً بك في ${guild.name}`)
-      .setDescription(`> **نورت السيرفر يا غالي! نتمنى لك وقتاً ممتعاً معنا.**\n\n👤 **العضو:** <@${member.id}>\n🆔 **المعرف:** \`${member.id}\`\n📩 **دخل من قبل:** ${inviterText}\n📊 **أنت العضو رقم:** \`Member #${memberCount}\`\n📅 **تاريخ إنشاء الحساب:** <t:${Math.floor(member.user.createdTimestamp / 1000)}:R>`) .setThumbnail(userAvatar) .setColor(COLOR_BLUE) .setFooter({ text: EMBED_FOOTER }) .setTimestamp();  await welcomeChannel.send({ content: `👋 أهلاً بك <@${member.id}> في السيرفر!`, embeds: [welcomeEmbed] });
+      .setDescription(`> **نورت السيرفر يا غالي! نتمنى لك وقتاً ممتعاً معنا.**\n\n👤 **العضو:** <@${member.id}>\n🆔 **المعرف:** \`${member.id}\`\n📩 **دخل من قبل:** ${inviterText}\n📊 **أنت العضو رقم:** \`Member #${memberCount}\`\n📅 **تاريخ إنشاء الحساب:** <t:${Math.floor(member.user.createdTimestamp / 1000)}:R>`)
+      .setThumbnail(userAvatar)
+      .setColor(COLOR_BLUE)
+      .setFooter({ text: EMBED_FOOTER })
+      .setTimestamp();
+
+    await welcomeChannel.send({ content: `👋 أهلاً بك <@${member.id}> في السيرفر!`, embeds: [welcomeEmbed] });
   } catch (err) {
     console.error('[Welcome Error]', err);
   }
@@ -144,7 +150,37 @@ async function findTargetMember(message, queryArg) {
 }
 
 client.once('ready', async () => {
-  console.log(`[Y7 PROTECTION CORE] Logged in as ${client.user.tag}`); client.guilds.cache.forEach(async (guild) => { await ensureMutedRole(guild); try { const invites = await guild.invites.fetch(); guildInvites.set(guild.id, invites); } catch (e) {} }); });  client.on('guildCreate', async (guild) => { await ensureMutedRole(guild); try { const invites = await guild.invites.fetch(); guildInvites.set(guild.id, invites); } catch (e) {} });  client.on('inviteCreate', async (invite) => { try { const invites = await invite.guild.invites.fetch(); guildInvites.set(invite.guild.id, invites); } catch (e) {} });  client.on('guildMemberAdd', async (member) => { const { guild } = member; if (member.user.bot) { try { await member.ban({ reason: '[Y7 Protection] دخول بوتات غير مصرح بها' }); const embed = createRoyalEmbed('🛡️ Anti-Bot Guard', `> **تم حظر البوت:** ${member.user.tag}\n> **المعرف:** \`${member.id}\``, COLOR_BLACK, '🤖');
+  console.log(`[Y7 PROTECTION CORE] Logged in as ${client.user.tag}`);
+  client.guilds.cache.forEach(async (guild) => {
+    await ensureMutedRole(guild);
+    try {
+      const invites = await guild.invites.fetch();
+      guildInvites.set(guild.id, invites);
+    } catch (e) {}
+  });
+});
+
+client.on('guildCreate', async (guild) => {
+  await ensureMutedRole(guild);
+  try {
+    const invites = await guild.invites.fetch();
+    guildInvites.set(guild.id, invites);
+  } catch (e) {}
+});
+
+client.on('inviteCreate', async (invite) => {
+  try {
+    const invites = await invite.guild.invites.fetch();
+    guildInvites.set(invite.guild.id, invites);
+  } catch (e) {}
+});
+
+client.on('guildMemberAdd', async (member) => {
+  const { guild } = member;
+  if (member.user.bot) {
+    try {
+      await member.ban({ reason: '[Y7 Protection] دخول بوتات غير مصرح بها' });
+      const embed = createRoyalEmbed('🛡️ Anti-Bot Guard', `> **تم حظر البوت:** ${member.user.tag}\n> **المعرف:** \`${member.id}\``, COLOR_BLACK, '🤖');
       await sendDedicatedLog(guild, '🤖-bot-logs', embed);
       return;
     } catch (e) {}
@@ -163,7 +199,19 @@ client.once('ready', async () => {
 
   await sendWelcomeMessage(member, inviter);
 
-  const inviterLog = inviter ? `<@${inviter.id}>` : 'غير معروف'; const joinEmbed = createRoyalEmbed('📥 انضمام عضو جديد', `> **العضو:** ${member.user.tag} (<@${member.id}>)\n> **دعوة بواسطة:** ${inviterLog}\n> **الحساب:** <t:${Math.floor(member.user.createdTimestamp / 1000)}:R>`, COLOR_CYAN, '👑'); await sendDedicatedLog(guild, '🚪-join-leave-logs', joinEmbed); });  client.on('guildMemberRemove', async (member) => { const leaveEmbed = createRoyalEmbed('📤 مغادرة عضو', `> **العضو:** ${member.user.tag} (<@${member.id}>)`, COLOR_BLACK, '🚪'); await sendDedicatedLog(member.guild, '🚪-join-leave-logs', leaveEmbed); });  client.on('messageDelete', async (message) => { if (!message.guild \vert{}\vert{} message.author?.bot) return; const embed = createRoyalEmbed('🗑️ Message Deleted', `> **الكاتب:** ${message.author.tag} (<@${message.author.id}>)\n> **القناة:** <#${message.channel.id}>\n\n\`\`\`${message.content || 'محتوى ميديا'}\`\`\``, COLOR_BLACK, '🗑️');
+  const inviterLog = inviter ? `<@${inviter.id}>` : 'غير معروف';
+  const joinEmbed = createRoyalEmbed('📥 انضمام عضو جديد', `> **العضو:** ${member.user.tag} (<@${member.id}>)\n> **دعوة بواسطة:** ${inviterLog}\n> **الحساب:** <t:${Math.floor(member.user.createdTimestamp / 1000)}:R>`, COLOR_CYAN, '👑');
+  await sendDedicatedLog(guild, '🚪-join-leave-logs', joinEmbed);
+});
+
+client.on('guildMemberRemove', async (member) => {
+  const leaveEmbed = createRoyalEmbed('📤 مغادرة عضو', `> **العضو:** ${member.user.tag} (<@${member.id}>)`, COLOR_BLACK, '🚪');
+  await sendDedicatedLog(member.guild, '🚪-join-leave-logs', leaveEmbed);
+});
+
+client.on('messageDelete', async (message) => {
+  if (!message.guild || message.author?.bot) return;
+  const embed = createRoyalEmbed('🗑️ Message Deleted', `> **الكاتب:** ${message.author.tag} (<@${message.author.id}>)\n> **القناة:** <#${message.channel.id}>\n\n\`\`\`${message.content || 'محتوى ميديا'}\`\`\``, COLOR_BLACK, '🗑️');
   await sendDedicatedLog(message.guild, '💬-message-logs', embed);
 });
 
@@ -187,14 +235,12 @@ client.on('messageCreate', async (message) => {
     const now = Date.now();
     const userTimestamps = spamTracker.get(author.id) || [];
     
-    // تصفية الرسائل التي تم إرسالها خلال آخر ثانيتين (2000 مللي ثانية)
     const recentMessages = userTimestamps.filter(timestamp => now - timestamp < 2000);
     recentMessages.push(now);
     spamTracker.set(author.id, recentMessages);
 
     if (recentMessages.length >= 3) {
       try {
-        // إعطاء تايم أوت 5 دقائق وتطهير سجل السبام لهذا المستخدم
         await member.timeout(5 * 60 * 1000, '[Y7 Anti-Spam] إرسال 3 رسائل أو أكثر في أقل من ثانيتين');
         spamTracker.delete(author.id);
 
@@ -230,7 +276,7 @@ client.on('messageCreate', async (message) => {
     }
   }
 
-  // 🔇 أمر الميوت (رتبة Muted الحقيقية)
+  // 🔇 أمر الميوت
   if (command === 'اص') {
     if (!member.permissions.has(PermissionFlagsBits.MuteMembers)) return;
     const target = await findTargetMember(message, args[1]);
@@ -262,7 +308,7 @@ client.on('messageCreate', async (message) => {
     }
   }
 
-  // ⏱️ قائمة التايم أوت الفخمة (أزرق وأسود مع قائمة منسدلة)
+  // ⏱️ قائمة التايم أوت
   if (command === 'تايم') {
     if (!member.permissions.has(PermissionFlagsBits.ModerateMembers)) return;
     const target = await findTargetMember(message, args[1]);
